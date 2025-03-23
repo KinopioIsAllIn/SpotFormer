@@ -3,7 +3,7 @@ Official Pytorch Implementation of 'SpotFormer: Multi-Scale Spatio-Temporal Tran
 
 We will release the entire code after the paper has been accepted.
 
-Now we release the motion feature and the model of SpoT-GCN
+Now we release the motion feature and the model of [SpoT-GCN](https://ieeexplore.ieee.org/abstract/document/10581968)
 
 Multi-Scale Spatio-Temporal Graph Convolutional Network for Facial Expression Spotting. FG 2024, Oral.
 
