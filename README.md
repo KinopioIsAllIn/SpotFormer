@@ -3,7 +3,9 @@ Official Pytorch Implementation of 'SpotFormer: Multi-Scale Spatio-Temporal Tran
 
 We will release the entire code after the paper has been accepted.
 
-Now we release the motion feature and the model of SpoT-GCN (Multi-Scale Spatio-Temporal Graph Convolutional Network for Facial Expression Spotting. FG 2024. Oral.)
+Now we release the motion feature and the model of SpoT-GCN
+
+Multi-Scale Spatio-Temporal Graph Convolutional Network for Facial Expression Spotting. FG 2024, Oral.
 
 The optical flow feature of the SAMM dataset can be downloaded from [baidunetdisk](https://pan.baidu.com/s/1GbAgqFqI8ReXd23cV4Tvpw?pwd=24ys).
 
