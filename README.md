@@ -1,6 +1,6 @@
-# SpotFormer
+# SpotFormer: Multi-Scale Spatio-Temporal Transformer for Facial Expression Spotting
 
-##Introduction
+## Introduction
 Official Pytorch Implementation of 'SpotFormer: Multi-Scale Spatio-Temporal Transformer for Facial Expression Spotting'
 
 We will release the entire code after the paper has been accepted.
@@ -9,7 +9,7 @@ Now we release the motion feature and the model of the conference version SpoT-G
 
 The optical flow feature of the SAMM dataset can be downloaded from [baidunetdisk](https://pan.baidu.com/s/1GbAgqFqI8ReXd23cV4Tvpw?pwd=24ys).
 
-##Citation
+## Citation
 We implement our source code based on [USTC_ME_Spotting](https://github.com/wenhaocold/USTC_ME_Spotting).
 
 ```
@@ -29,5 +29,5 @@ We implement our source code based on [USTC_ME_Spotting](https://github.com/wenh
 }
 ```
 
-##Acknowlegment
+## Acknowlegment
 We implement our source code based on [USTC_ME_Spotting](https://github.com/wenhaocold/USTC_ME_Spotting).
