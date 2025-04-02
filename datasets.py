@@ -56,6 +56,16 @@ class LOSO_DATASET(data.Dataset):
         macro_apex_score = [0.] * (self._segment_len)
         micro_action_score = [0.] * (self._segment_len)
         macro_action_score = [0.] * (self._segment_len)
+        # micro_start_end_label = [2] * (self._segment_len + STEP * 2)  # 0->start, 1->end, 2->None
+        # macro_start_end_label = [2] * (self._segment_len + STEP * 2)  # 0->start, 1->end, 2->None
+        # micro_apex_score = [0.] * (self._segment_len + STEP * 2)
+        # macro_apex_score = [0.] * (self._segment_len + STEP * 2)
+        # micro_action_score = [0.] * (self._segment_len + STEP * 2)
+        # macro_action_score = [0.] * (self._segment_len + STEP * 2)
+
+        action_score = [0] * (self._segment_len)  # 0 normal, 1 macro, 2 micro
+
+        # apex_labels = [0] * self._segment_len
 
         # start and end (micro)
         for index, start_label in enumerate(micro_start_labels):
@@ -97,18 +107,23 @@ class LOSO_DATASET(data.Dataset):
         for index, apex_label in enumerate(micro_apex_labels):
             if apex_label == 1:
                 micro_apex_score[index] = 1
+
                 for j in range(1, _micro_normal_range + 1):
                     if index - j > 0:
                         micro_apex_score[index - j] = rv.pdf(j) / rv.pdf(0)
+
                     if index + j < self._segment_len:
                         micro_apex_score[index + j] = rv.pdf(j) / rv.pdf(0)
+
         # apex (macro)
         for index, apex_label in enumerate(macro_apex_labels):
             if apex_label == 1:
                 macro_apex_score[index] = 1
+
                 for j in range(1, _macro_normal_range + 1):
                     if index - j > 0:
                         macro_apex_score[index - j] = rv.pdf(j) / rv.pdf(0)
+
                     if index + j < self._segment_len:
                         macro_apex_score[index + j] = rv.pdf(j) / rv.pdf(0)
 
@@ -116,9 +131,11 @@ class LOSO_DATASET(data.Dataset):
         for index, action_label in enumerate(micro_action_labels):
             if action_label == 1:
                 micro_action_score[index] = 1
+                action_score[index] = 2
         for index, action_label in enumerate(macro_action_labels):
             if action_label == 1:
                 macro_action_score[index] = 1
+                action_score[index] = 1
 
         # micro_start_end_label = micro_start_end_label[STEP:-STEP]
         # macro_start_end_label = macro_start_end_label[STEP:-STEP]
@@ -126,8 +143,8 @@ class LOSO_DATASET(data.Dataset):
         # macro_apex_score = macro_apex_score[STEP:-STEP]
         # micro_action_score = micro_action_score[STEP:-STEP]
         # macro_action_score = macro_action_score[STEP:-STEP]
-
         feature = torch.tensor(feature).float()
+
         #feature[:, :, 0] = (feature[:, :, 0] - 0.003463) / 0.548588
         #feature[:, :, 1] = (feature[:, :, 1] - 0.003873) / 0.645621
         micro_start_end_label = torch.tensor(micro_start_end_label,
@@ -138,11 +155,13 @@ class LOSO_DATASET(data.Dataset):
         macro_apex_score = torch.tensor(macro_apex_score).float()
         micro_action_score = torch.tensor(micro_action_score).float()
         macro_action_score = torch.tensor(macro_action_score).float()
+        # apex_labels = torch.tensor(apex_labels, dtype=torch.int64)
+        action_score = torch.tensor(action_score, dtype=torch.int64)
 
         if self._split == "train":
             return (feature, micro_apex_score, macro_apex_score,
                     micro_action_score, macro_action_score,
-                    micro_start_end_label, macro_start_end_label)
+                    micro_start_end_label, macro_start_end_label, action_score)
         elif self._split == "test":
             return feature
 
@@ -364,7 +383,7 @@ class CROSS_DATASET(data.Dataset):
 
 if __name__ == "__main__":
     dataset = "cross"  # "cas(me)^2"
-    with open("config.yaml", encoding="UTF-8") as f:
+    with open("./config.yaml", encoding="UTF-8") as f:
         opt = yaml.safe_load(f)[dataset]
     subject_list = opt['subject_list']
     set_seed(seed=42)
