@@ -5,7 +5,7 @@ Official Pytorch Implementation of 'SpotFormer: Multi-Scale Spatio-Temporal Tran
 
 We will release the entire code after the paper has been accepted.
 
-Now we release the motion feature and the model of the conference version SpoT-GCN. [IEEE version](https://ieeexplore.ieee.org/abstract/document/10581968), [preprint](https://arxiv.org/abs/2403.15994).
+Now we release the motion feature and the model of the conference version SpoT-GCN. (FG 2024, Oral.) [IEEE version](https://ieeexplore.ieee.org/abstract/document/10581968), [preprint](https://arxiv.org/abs/2403.15994).
 
 The optical flow feature of the SAMM dataset can be downloaded from [baidunetdisk](https://pan.baidu.com/s/1GbAgqFqI8ReXd23cV4Tvpw?pwd=24ys).
 
