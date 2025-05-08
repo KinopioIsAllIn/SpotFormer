@@ -9,6 +9,8 @@ Now we release the motion feature and the model of the conference version SpoT-G
 
 The optical flow feature of the SAMM dataset can be downloaded from [baidunetdisk](https://pan.baidu.com/s/1GbAgqFqI8ReXd23cV4Tvpw?pwd=24ys) [google drive](https://drive.google.com/file/d/1a4FgEj_7fATJ41But6L1Yhe2XE-vfN9v/view?usp=sharing).
 
+CAS(ME)^2: [baidunetdisk](https://pan.baidu.com/s/109VV1gtsdTv3EzYxBoqAaw?pwd=r76x) [google drive](https://drive.google.com/file/d/1fXkzw3jJFC5EEx7at4ThDKQFxVSadN-U/view?usp=sharing)
+
 ## Citation
 If you find our research useful, please consider citing:
 
