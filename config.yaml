@@ -17,13 +17,13 @@ cas(me)^2:
   project_root: "./"
   feature_root: "./feature/feature_adj_M17_landmark_0/casme_25/feature_25"   # feature_adj_M17_stack_0530_0_16
   segment_feat_root: "./feature/feature_adj_M17_landmark_0/casme_25/feature_segment_25"
-  model_save_root: "model/1124finetune1/casme"
-  output_dir_name: "output/1124finetune1/casme"           # feature_adj_M15_stack_0530_161
+  model_save_root: "model/rebuttal512_8/casme"
+  output_dir_name: "output/rebuttal512_8/casme"           # feature_adj_M15_stack_0530_161
   anno_csv: "./info_csv/cas(me)_new_updated1.csv"
   num_workers: 2
   device: 'cuda:1'
 
-  abfcm_training_lr: 0.01
+  abfcm_training_lr: 0.0002
   abfcm_weight_decay: 0.1
   abfcm_lr_scheduler: 0.96
   abfcm_apex_gamma: 1
@@ -35,15 +35,15 @@ cas(me)^2:
   abfcm_label_smooth: 0.16
   abfcm_best_epoch: 47
 
-  micro_apex_score_threshold: 0.55
-  macro_apex_score_threshold: 0.55
+  micro_apex_score_threshold: 0.5
+  macro_apex_score_threshold: 0.5
 
   epochs: 100
   batch_size: 32
 
   verbose: False
 
-  macro_ration: 0.7 # balance micro and macro
+  macro_ration: 0.5 # balance micro and macro
   micro_normal_range: 1
   macro_normal_range: 3
 
@@ -54,33 +54,110 @@ cas(me)^2:
       "casme_33","casme_34","casme_35","casme_36","casme_37",
       "casme_38","casme_40"
   ]
+#  subject_list: [
+#          "casme_16"
+#  ]
+
+cas(me)^3:
+  dataset: "cas(me)^3"
+  mode: "abfcm_iou_mul_process" #"abfcm_output_mul_process" #"abfcm_final_result" #"abfcm_train_mul_process" #"abfcm_nms_mul_process"
+  RATIO_SCALE: 1
+  SEGMENT_LENTH: 16
+  RECEPTIVE_FILED: 17
+  save_model: True
+  micro_average_len: 16
+  macro_average_len: 59
+  macro_min: 16
+  micro_min: 5
+  epoch_begin: 6
+  nms_top_K: 5
+
+  project_root: "./"
+  feature_root: "./feature/feature_reduce_flLGS/casme3_25/feature_25"   # feature_adj_M17_stack_0530_0_16
+  segment_feat_root: "./feature/feature_reduce_flLGS/casme3_25/feature_segment_25"
+  model_save_root: "/home1/yicheng/SpoTFormer_Experiments/model/1110/casme3"
+  output_dir_name: "/home1/yicheng/SpoTFormer_Experiments/output/1110/casme3"           # feature_adj_M15_stack_0530_161
+  anno_csv: "./info_csv/casme3_reduced_flLGS.csv"
+  num_workers: 2
+  device: 'cuda:1'
+
+  abfcm_training_lr: 0.0002
+  abfcm_weight_decay: 0.1
+  abfcm_lr_scheduler: 0.96
+  abfcm_apex_gamma: 1
+  abfcm_apex_alpha: 0.90
+  abfcm_action_gamma: 1
+  abfcm_action_alpha: 0.80
+  abfcm_start_end_gama: 1
+  abfcm_start_end_alpha: 0.90
+  abfcm_label_smooth: 0.16
+  abfcm_best_epoch: 47
+
+  micro_apex_score_threshold: 0.5
+  macro_apex_score_threshold: 0.5
+
+  epochs: 90  # 60
+  batch_size: 32  # 32
+
+  verbose: False
+
+  macro_ration: 0.5 # balance micro and macro
+  micro_normal_range: 1
+  macro_normal_range: 3
+
+  subject_list: [
+    'casme3_1', 'casme3_10', 'casme3_11', 'casme3_12', 'casme3_13', 'casme3_138', 'casme3_139', 'casme3_14', 'casme3_140', 'casme3_142', 'casme3_143', 'casme3_144',
+                 'casme3_145', 'casme3_146', 'casme3_147', 'casme3_148', 'casme3_149', 'casme3_15', 'casme3_150', 'casme3_151', 'casme3_152', 'casme3_153', 'casme3_154',
+                 'casme3_155',
+                 'casme3_156', 'casme3_157', 'casme3_158',
+                 'casme3_159', 'casme3_16', 'casme3_160', 'casme3_161', 'casme3_162',
+                 'casme3_163', 'casme3_165', 'casme3_166', 'casme3_167', 'casme3_168', 'casme3_169', 'casme3_17', 'casme3_170',
+                 'casme3_171', 'casme3_172', 'casme3_173', 'casme3_174', 'casme3_175', 'casme3_176', 'casme3_177', 'casme3_178',
+                 'casme3_179', 'casme3_180','casme3_181', 'casme3_182', 'casme3_183', 'casme3_184', 'casme3_185', 'casme3_186',
+                 'casme3_187', 'casme3_188', 'casme3_189', 'casme3_190', 'casme3_192', 'casme3_193', 'casme3_194',
+                 'casme3_195', 'casme3_196', 'casme3_197', 'casme3_198', 'casme3_2', 'casme3_200', 'casme3_201', 'casme3_202', 'casme3_203', 'casme3_204', 'casme3_206', 'casme3_207', 'casme3_208',
+                 'casme3_209', 'casme3_210', 'casme3_211', 'casme3_212', 'casme3_213', 'casme3_214', 'casme3_215', 'casme3_216', 'casme3_217', 'casme3_218', 'casme3_3', 'casme3_39',
+                 'casme3_4', 'casme3_40', 'casme3_41', 'casme3_42', 'casme3_5', 'casme3_6', 'casme3_7', 'casme3_77', 'casme3_8', 'casme3_9'
+  ]
+#
+#  subject_list: ['casme3_1', 'casme3_10', 'casme3_11', 'casme3_12', 'casme3_13', 'casme3_138', 'casme3_139', 'casme3_14', 'casme3_140', 'casme3_142', 'casme3_143', 'casme3_144']
+#  subject_list: ['casme3_145', 'casme3_146', 'casme3_147', 'casme3_148', 'casme3_149', 'casme3_15', 'casme3_150', 'casme3_151', 'casme3_152', 'casme3_153', 'casme3_154', 'casme3_155', 'casme3_156',]
+#  subject_list: ['casme3_157', 'casme3_158', 'casme3_159', 'casme3_16', 'casme3_160', 'casme3_161', 'casme3_162', 'casme3_163', 'casme3_165', 'casme3_166', 'casme3_167', 'casme3_168', 'casme3_169']
+#  subject_list: ['casme3_17', 'casme3_170', 'casme3_171', 'casme3_172', 'casme3_173', 'casme3_174', 'casme3_175', 'casme3_176', 'casme3_177', 'casme3_178', 'casme3_179', 'casme3_180']
+#  subject_list: ['casme3_181', 'casme3_182', 'casme3_183', 'casme3_184', 'casme3_185', 'casme3_186', 'casme3_187', 'casme3_188', 'casme3_189', 'casme3_190', 'casme3_192', 'casme3_193']
+#  subject_list: ['casme3_194', 'casme3_195', 'casme3_196', 'casme3_197', 'casme3_198', 'casme3_2', 'casme3_200', 'casme3_201', 'casme3_202', 'casme3_203', 'casme3_204', 'casme3_206']
+#  subject_list: ['casme3_207', 'casme3_208', 'casme3_209', 'casme3_210', 'casme3_211', 'casme3_212', 'casme3_213', 'casme3_214', 'casme3_215', 'casme3_216', 'casme3_217', 'casme3_218']
+#  subject_list: ['casme3_3', 'casme3_39', 'casme3_4', 'casme3_40', 'casme3_41', 'casme3_42', 'casme3_5', 'casme3_6', 'casme3_7', 'casme3_77', 'casme3_8', 'casme3_9']
+
+#  subject_list: ['casme3_1', 'casme3_10', 'casme3_11', 'casme3_145', 'casme3_146', 'casme3_147', 'casme3_157', 'casme3_158']
+
 
 samm:
   dataset: "samm"
   mode: "abfcm_output_mul_process" #"abfcm_iou_mul_process" #"abfcm_final_result" #"abfcm_train_mul_process" #"abfcm_nms_mul_process" 
   RATIO_SCALE: 1
   SEGMENT_LENTH: 16   # 256  176
-  RECEPTIVE_FILED: 17  # 15   25
+  RECEPTIVE_FILED: 15  # 15   25
 
   save_model: True
   micro_average_len: 16
   macro_average_len: 59  # 120
   macro_min: 16
   micro_min: 5
-  epoch_begin: 6
+  epoch_begin: 1
   # M: 54
   nms_top_K: 5 # 100
 
   project_root: "./"
-  feature_root: "./feature/feature_adj_M17_stack_0530_0_16/samm_25/feature_25"   # feature_adj_M17_stack_0530_0_16
-  segment_feat_root: "./feature/feature_adj_M17_stack_0530_0_16/samm_25/feature_segment_25"
-  model_save_root: "model/1116confirm/samm"   # feature_adj_M17_stack_0530_0_16_noL2Norm
-  output_dir_name: "output/1116confirm/samm"           # feature_adj_M15_stack_0530_161
+  feature_root: "./feature/feature_adj_M15_stack_0530_0_16/samm_25/feature_25"   # feature_adj_M17_stack_0530_0_16
+  segment_feat_root: "./feature/feature_adj_M15_stack_0530_0_16/samm_25/feature_segment_25"
+  model_save_root: "model/layer4_15_/samm"   # feature_adj_M17_stack_0530_0_16_noL2Norm
+  output_dir_name: "output/layer4_15_/samm"           # feature_adj_M15_stack_0530_161
   anno_csv: "./info_csv/samm_new_25_7.csv"
   num_workers: 2
   device: 'cuda:0'
 
-  abfcm_training_lr: 0.01
+  abfcm_training_lr: 0.0002
   abfcm_weight_decay: 0.1
   abfcm_lr_scheduler: 0.96
   abfcm_apex_gamma: 1
@@ -96,11 +173,11 @@ samm:
   macro_apex_score_threshold: 0.50
 
   epochs: 100
-  batch_size: 32 #17 52 10 41   21 58 13 44
+  batch_size: 32 # 32
 
   verbose: False
 
-  macro_ration: 0.7    # 1.0
+  macro_ration: 0.55    # 1.0
   micro_normal_range: 1
   macro_normal_range: 3
 

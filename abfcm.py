@@ -13,7 +13,7 @@ from colorama import Style
 from torch.utils.tensorboard.writer import SummaryWriter
 import torch.nn.functional as F
 
-from model import PEM, Model
+from model import PEM, Model, MSSTGT
 from datasets import LOSO_DATASET, CROSS_DATASET
 from tool import save_model, save_model_per_subject, configure_optimizers
 from post_process import calculate_proposal_with_score, nms, iou_for_find, iou_for_tp
@@ -107,24 +107,6 @@ class SupConLoss(torch.nn.Module):
 
         return loss
 
-class ContrastiveLoss(torch.nn.Module):
-    """
-    Contrastive loss function.
-    Based on: http://yann.lecun.com/exdb/publis/pdf/hadsell-chopra-lecun-06.pdf
-    """
-
-    def __init__(self, margin=2.0):
-        super(ContrastiveLoss, self).__init__()
-        self.margin = margin
-
-    def forward(self, output1, output2, label):
-        euclidean_distance = F.pairwise_distance(output1, output2, keepdim=True)
-        loss_contrastive = torch.mean((1-label) * torch.pow(euclidean_distance, 2) +
-                                      (label) * torch.pow(torch.clamp(self.margin - euclidean_distance, min=0.0), 2))
-
-
-        return loss_contrastive
-
 class MultiCEFocalLoss(torch.nn.Module):
     def __init__(self, class_num, gamma=2, alpha=None, reduction='mean'):
         super(MultiCEFocalLoss, self).__init__()
@@ -153,7 +135,6 @@ class MultiCEFocalLoss(torch.nn.Module):
         elif self.reduction == 'sum':
             loss = loss.sum()
         return loss
-
 
 class MultiCEFocalLoss_New(torch.nn.Module):
     def __init__(self, class_num, gamma=2, alpha=None, lb_smooth=0,
@@ -220,13 +201,6 @@ def _focal_loss(output, label, gamma, alpha, lb_smooth):
     label = label.view(-1)
     mask_class = (label > 0).float()
 
-    # p_num = torch.sum(label > 0).item()
-    # n_num = torch.sum(label == 0).item()
-    # if p_num == 0:
-    #     return 0
-    # c_0 = 1 / math.log2(n_num / p_num)
-    # c_1 = 1 - c_0
-
     c_1 = alpha
     c_0 = 1 - c_1
     loss = ((c_1 * torch.abs(label - output)**gamma * mask_class
@@ -292,6 +266,17 @@ def _regression_loss(output_distance, distance_start, distance_end, device,
     return loss1 + loss2
 
 
+def _spatial_pos_loss(spatial_pos_embedding):
+    l1 = (F.mse_loss(spatial_pos_embedding[0, 0], spatial_pos_embedding[0, 1]) +
+          F.mse_loss(spatial_pos_embedding[0, 1], spatial_pos_embedding[0, 2])) / 2
+    l2 = (F.mse_loss(spatial_pos_embedding[0, 3], spatial_pos_embedding[0, 4]) +
+          F.mse_loss(spatial_pos_embedding[0, 4], spatial_pos_embedding[0, 5])) / 2
+    l3 = (F.mse_loss(spatial_pos_embedding[0, 6], spatial_pos_embedding[0, 7]) +
+          F.mse_loss(spatial_pos_embedding[0, 7], spatial_pos_embedding[0, 8]) +
+          F.mse_loss(spatial_pos_embedding[0, 8], spatial_pos_embedding[0, 9])) / 3
+    return (l1+l2+l3)/3
+
+
 def _train(model, data_loader, optimizer, epoch, device, writer, opt, subject=None):
     model.train(True)
     epoch_loss = 0
@@ -305,13 +290,16 @@ def _train(model, data_loader, optimizer, epoch, device, writer, opt, subject=No
         b, t, n, c = feature.shape
 
         index = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+        # index = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12]  # including nose area
+        # index = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 13, 14]  # including eyelid area
+        # index = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14]  # including all
         feature = feature[:, :, index, :]
         # index = [0, 1, 2, 3, 4, 5, 8, 9, 10, 11]
         # feature = feature[:, :, index, :]
 
-        # for GCN
+
         feature = feature.permute(0, 3, 1, 2).contiguous()
-        # feature = feature.reshape(b, t, -1).permute(0, 2, 1).contiguous()
+        # feature = feature.reshape(b, t, -1).permute(0, 2, 1).contiguous() # for GCN
         feature = feature.to(device)
 
         micro_apex_score = micro_apex_score.to(device)
@@ -323,12 +311,17 @@ def _train(model, data_loader, optimizer, epoch, device, writer, opt, subject=No
 
         STEP = int(opt["RECEPTIVE_FILED"] // 2)
 
-        output_probability, output4contrastive = model(feature)  # b, 10, M
+        output_probability, output4contrastive, spatial_pos_embedding = model(feature)  # b, 10, M
         # output_probability = output_probability[:, :, STEP:-STEP]  # b, 10, 1
+
+        # print(output_probability[:5])
 
         contrastive_loss = SupConLoss(temperature=0.5, base_temperature=0.07)
         action_labels = action_labels.to(device).reshape(-1)
         loss_contrastive = contrastive_loss(features=output4contrastive, labels=action_labels, device=device)
+
+        # spatial_pos_loss = _spatial_pos_loss(spatial_pos_embedding)
+
 
         output_micro_apex = output_probability[:, 6, :]
         output_macro_apex = output_probability[:, 7, :]
@@ -401,7 +394,7 @@ def _train(model, data_loader, optimizer, epoch, device, writer, opt, subject=No
                     1.0 * loss_macro_apex
                     + 1.0 * loss_macro_start_end
                     + 0.1 * loss_macro_action
-                )) + 0.05 * loss_contrastive
+                )) + 0.005 * loss_contrastive  # + 0.005 * spatial_pos_loss
 
         epoch_loss += loss.item()
 
@@ -577,8 +570,22 @@ def abfcm_train_and_eval(opt):
 def abfcm_train(opt, subject=None):
     device = opt['device'] if torch.cuda.is_available() else 'cpu'
     train_dataset = LOSO_DATASET(opt, "train", subject)
+
+    print("Data: %d." % len(train_dataset))
+
     # model = PEM(opt)
-    model = Model(in_channels=2, num_class=10, edge_importance_weighting=True)
+    # model = Model(in_channels=2, num_class=10, edge_importance_weighting=True)
+    hidden_dim = 256  # 256 best
+    model = MSSTGT(
+        seq_len=opt["RECEPTIVE_FILED"],
+        num_classes=10,
+        dim=hidden_dim,
+        depth=4,
+        heads=4,
+        mlp_dim=hidden_dim,
+        dropout=0.1,
+        emb_dropout=0.1)
+
     model = model.to(device)
 
     train_loader = torch.utils.data.DataLoader(train_dataset,
@@ -615,8 +622,20 @@ def abfcm_train_group(opt, ca_subject):
 
 def abfcm_output(opt, subject):
     device = opt['device'] if torch.cuda.is_available() else 'cpu'
+
     # model = PEM(opt)
-    model = Model(2, 10, True)
+    # model = Model(2, 10, True)
+    hidden_dim = 256  # 256 best
+    model = MSSTGT(
+        seq_len=opt["RECEPTIVE_FILED"],
+        num_classes=10,
+        dim=hidden_dim,
+        depth=4,
+        heads=4,
+        mlp_dim=hidden_dim,
+        dropout=0.1,
+        emb_dropout=0.1)
+
     model = model.to(device)
     epoch_begin = opt['epoch_begin']
     for epoch in range(opt['epochs']):
@@ -804,54 +823,39 @@ def _get_model_output_full(model, epoch, device, opt,
 
     tmp_array = []
 
-    col_name = ["video_name", "start_frame", "end_frame", "start_score",
+    col_name = ["video_name", "start_frame", "end_frame", "apex_frame", "start_score",
                 "end_score", "apex_score", "type_idx"]
-    # col_name = ["video_name", "start_frame", "apex_frame", "end_frame", "start_score", "apex_score",
-    #             "end_score", "action_score", "type_idx"]
-    feature_maps = []
-    labels = []
     for feature_path in feature_path_list:
         feature = np.load(feature_path)
         video_name = feature_path.split('/')[-1].split('\\')[-1].split(".")[0][:13]  # [:13] for casme
         feature = torch.from_numpy(feature).float()
         T, t, n, c = feature.shape
-        # t, n, c = feature.shape
-        # feature = feature.reshape(1, t, n, c)
 
         index = [1, 2, 3, 5, 6, 7, 9, 10, 11, 12]
+
         feature = feature[:, :, index, :]
-        # index = [0, 1, 2, 3, 4, 5, 8, 9, 10, 11]
-        # feature = feature[:, :, index, :]
 
         # for GCN
         feature = feature.permute(0, 3, 1, 2).contiguous()
-        # feature = feature.reshape(T, t, -1).permute(0, 2, 1).contiguous()  # T, nc, t
         feature = feature.to(device)
 
         # video_len = t
         video_len = T
         STEP = int(opt["RECEPTIVE_FILED"] // 2)
-        output_probability, feature_map = model(feature)
+        output_probability, feature_map, spatial_pos = model(feature)
 
-        # output_probability = output_probability[:, :, STEP:-STEP]
         output_probability = output_probability.permute(2, 1, 0)  # 1, output, T
 
         output_micro_apex = output_probability[:, 6, :]
         output_macro_apex = output_probability[:, 7, :]
         output_micro_start_end = output_probability[:, 0: 0 + 3, :]
         output_macro_start_end = output_probability[:, 3: 3 + 3, :]
-        micro_action = output_probability[:, 8, :]
-        macro_action = output_probability[:, 9, :]
 
         # micro expression
         array_softmax_score_micro = torch.softmax(
             output_micro_start_end.cpu(), dim=1).numpy()
         array_score_micro_apex = torch.sigmoid(
             output_micro_apex.cpu()).squeeze().numpy()
-        micro_score = torch.sigmoid(
-            micro_action.cpu()).squeeze().numpy()
-        macro_score = torch.sigmoid(
-            macro_action.cpu()).squeeze().numpy()
         micro_proposal_block = _cal_proposal(
             array_softmax_score_micro, array_score_micro_apex, video_len,
             video_name, type_idx=2)
@@ -912,7 +916,7 @@ def abfcm_final_result_per_subject(opt, subject_list, type_idx=2):
 
                 # print(micro_df[micro_df["find"] == True]["iou"])
                 all_IoU += micro_df[micro_df["find"] == True]["wiou"].astype(np.float32).sum().item()
-                all_w += micro_df[micro_df["find"] == True]["w"].astype(np.float32).astype(np.int).sum().item()
+                all_w += micro_df[micro_df["find"] == True]["w"].astype(np.float32).astype(np.int_).sum().item()
 
         tmp_df = anno_df[anno_df['subject'] == subject]
         tmp_df = tmp_df[tmp_df['type_idx'] == type_idx]
@@ -976,7 +980,10 @@ def abfcm_final_result_per_subject(opt, subject_list, type_idx=2):
                 m += tmp_m
                 # f1_score += tmp_f1_score
                 # f1_score = 2 * find / (n+m)
-                f1_score = 2 * (find) / (n + m)
+                if (n+m) == 0:
+                    f1_score = 0.0
+                else:
+                    f1_score = 2 * (find) / (n + m)
                 wiou += tmp_iou
                 w += tmp_w
 
@@ -1052,6 +1059,7 @@ def abfcm_final_result_best(opt, subject_list, type_idx=2):
         tp = 0
         m = 0
         n = 0
+        apex_diff = 0.0
         for subject in subject_list:
             # TODO: directory name of cas(ME) and samm is not compatible
             epoch = best_epoch_df[
@@ -1066,6 +1074,9 @@ def abfcm_final_result_best(opt, subject_list, type_idx=2):
                 find += len(df[df["find"] == True])
                 tp += len(df[df["tp"] == True])
                 n += len(df)
+
+                apex_diff += sum(df["apex_diff"].values)
+
             tmp_df = anno_df[anno_df['subject'] == subject]
             tmp_df = tmp_df[tmp_df['type_idx'] == type_idx]
             m += len(tmp_df)
@@ -1079,12 +1090,12 @@ def abfcm_final_result_best(opt, subject_list, type_idx=2):
             precision = find / n
         if n * find + m * tp > 0:
             f1_score = 2 * find / (n + m)
-        return find, tp, n, recall, f1_score, precision
+        return find, tp, n, recall, f1_score, precision, apex_diff
 
     (macro_find, macro_tp, macro_n, macro_recall, macro_f1_score,
-        macro_precision) = _cal_metrics(type_idx=1)
+        macro_precision, macro_apex_diff) = _cal_metrics(type_idx=1)
     (micro_find, micro_tp, micro_n, micro_recall, micro_f1_score,
-        micro_precision) = _cal_metrics(type_idx=2)
+        micro_precision, micro_apex_diff) = _cal_metrics(type_idx=2)
 
     print("================ FINAL RESULT ================")
     print("MACRO RESULT")
@@ -1094,6 +1105,7 @@ def abfcm_final_result_best(opt, subject_list, type_idx=2):
     print("【MACRO_TP】 = %d" % macro_tp)
     print("【MACRO_Find】 = %d" % macro_find)
     print("【MACRO_Predict_Count】 = %d" % macro_n)
+    print("【MACRO_Apex_Diff】 = %f" % (macro_apex_diff/macro_find))
 
     print("\nMICRO RESULT")
     print("【MICRO_F1_Score】= %.6f" % (micro_f1_score))
@@ -1102,6 +1114,10 @@ def abfcm_final_result_best(opt, subject_list, type_idx=2):
     print("【MICRO_TP】 = %d" % micro_tp)
     print("【MICRO_Find】 = %d" % micro_find)
     print("【MICRO_Predict_Count】 = %d" % micro_n)
+    print("【MICRO_Apex_Diff】 = %f" % (micro_apex_diff/micro_find))
+
+    print("【Overall_Apex_Diff】 = %f" % ((macro_apex_diff + micro_apex_diff)/(macro_find+micro_find)))
+
 
 
 def generate_proposal(opt, model, epoch):

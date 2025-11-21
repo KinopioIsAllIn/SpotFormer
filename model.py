@@ -2,165 +2,14 @@ import torch
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
+from einops import rearrange, repeat, pack, unpack
+from einops.layers.torch import Rearrange
+from timm.models.layers import trunc_normal_
+import random
 
 
-class Graph():
-    """ The Graph to model the skeletons extracted by the openpose
 
-    Args:
-        strategy (string): must be one of the follow candidates
-        - uniform: Uniform Labeling
-        - distance: Distance Partitioning
-        - spatial: Spatial Configuration
-        For more information, please refer to the section 'Partition Strategies'
-            in our paper (https://arxiv.org/abs/1801.07455).
-
-        layout (string): must be one of the follow candidates
-        - openpose: Is consists of 18 joints. For more information, please
-            refer to https://github.com/CMU-Perceptual-Computing-Lab/openpose#output
-        - ntu-rgb+d: Is consists of 25 joints. For more information, please
-            refer to https://github.com/shahroudy/NTURGB-D
-
-        max_hop (int): the maximal distance between two connected nodes
-        dilation (int): controls the spacing between the kernel points
-
-    """
-
-    def __init__(self,
-                 layout='face1',
-                 strategy='uniform',
-                 max_hop=1,
-                 dilation=1):
-        self.max_hop = max_hop
-        self.dilation = dilation
-
-        self.get_edge(layout)
-        self.hop_dis = get_hop_distance(
-            self.num_node, self.edge, max_hop=max_hop)
-        self.get_adjacency(strategy)
-
-    def __str__(self):
-        return self.A
-
-    def get_edge(self, layout):
-        if layout == 'face0':
-            self.num_node = 10
-            self_link = [(i, i) for i in range(self.num_node)]
-            neighbor_link = []
-            self.edge = self_link + neighbor_link
-            self.center = 1
-        elif layout == 'face1':
-            self.num_node = 10
-            # self_link = [(i, i) for i in range(self.num_node)]
-            neighbor_link = [(1, 2), (0, 1), (4, 3), (5, 4), (8, 6), (8, 7), (6, 9), (7, 9), (0, 3), (3, 8), (0, 8)]
-            # neighbor_link = [(0, 1), (1, 2), (3, 4), (4, 5), (6, 7), (8, 7), (6, 9), (8, 9), (2, 3), (2, 7), (3, 7)]
-
-            # self.edge = self_link + neighbor_link
-            self.edge = neighbor_link
-            self.center = 1
-        elif layout == 'face2':
-            self.num_node = 3
-            # self_link = [(i, i) for i in range(self.num_node)]
-            # neighbor_link = [(3, 0), (2, 1), (3, 2)]
-            neighbor_link = [(1, 0), (1, 2), (0, 2)]
-            # self.edge = self_link + neighbor_link
-            self.edge = neighbor_link
-            self.center = 1
-        elif layout == 'face3':
-            self.num_node = 1
-            # self_link = [(i, i) for i in range(self.num_node)]
-            # self.edge = self_link
-            self.edge = []
-            self.center = 0
-        else:
-            raise ValueError("Do Not Exist This Layout.")
-
-    def get_adjacency(self, strategy):
-        valid_hop = range(1, self.max_hop + 1, self.dilation)
-        adjacency = np.zeros((self.num_node, self.num_node))
-        for hop in valid_hop:
-            adjacency[self.hop_dis == hop] = 1
-        normalize_adjacency = normalize_undigraph(adjacency)
-
-        if strategy == 'uniform':
-            A = np.zeros((1, self.num_node, self.num_node))
-            A[0] = normalize_adjacency
-            self.A = A
-        elif strategy == 'distance':
-            A = np.zeros((len(valid_hop), self.num_node, self.num_node))
-            for i, hop in enumerate(valid_hop):
-                A[i][self.hop_dis == hop] = normalize_adjacency[self.hop_dis == hop]
-            self.A = A
-        elif strategy == 'spatial':
-            A = []
-            for hop in valid_hop:
-                a_root = np.zeros((self.num_node, self.num_node))
-                a_close = np.zeros((self.num_node, self.num_node))
-                a_further = np.zeros((self.num_node, self.num_node))
-                for i in range(self.num_node):
-                    for j in range(self.num_node):
-                        if self.hop_dis[j, i] == hop:
-                            if self.hop_dis[j, self.center] == self.hop_dis[
-                                    i, self.center]:
-                                a_root[j, i] = normalize_adjacency[j, i]
-                            elif self.hop_dis[j, self.
-                                              center] > self.hop_dis[i, self.
-                                                                     center]:
-                                a_close[j, i] = normalize_adjacency[j, i]
-                            else:
-                                a_further[j, i] = normalize_adjacency[j, i]
-                if hop == 0:
-                    A.append(a_root)
-                else:
-                    A.append(a_root + a_close)
-                    A.append(a_further)
-            A = np.stack(A)
-            self.A = A
-        else:
-            raise ValueError("Do Not Exist This Strategy")
-
-
-def get_hop_distance(num_node, edge, max_hop=1):
-    A = np.zeros((num_node, num_node))
-    for i, j in edge:
-        A[j, i] = 1
-        A[i, j] = 1
-
-    # compute hop steps
-    hop_dis = np.zeros((num_node, num_node)) + np.inf
-    transfer_mat = [np.linalg.matrix_power(A, d) for d in range(0, max_hop + 1)]
-    arrive_mat = (np.stack(transfer_mat) > 0)
-    for d in range(max_hop, -1, -1):
-        hop_dis[arrive_mat[d]] = d
-    return hop_dis
-
-
-def normalize_digraph(A):
-    Dl = np.sum(A, 0)
-    num_node = A.shape[0]
-    Dn = np.zeros((num_node, num_node))
-    for i in range(num_node):
-        if Dl[i] > 0:
-            Dn[i, i] = Dl[i]**(-1)
-    AD = np.dot(A, Dn)
-    return AD
-
-
-def normalize_undigraph(A):
-    Dl = np.sum(A, 0)  # 每一个节点有多少个邻居
-    num_node = A.shape[0]  # 有多少个节点
-    I = np.eye(num_node)
-    Dn = np.zeros((num_node, num_node))  #
-    for i in range(num_node):
-        if Dl[i] > 0:
-            Dn[i, i] = Dl[i]**(-0.5)
-    DAD = np.dot(np.dot(Dn, A), Dn)
-    L = I - DAD
-    return L
-
-# The based unit of graph convolutional networks.
-
-class ConvTemporalGraphical(nn.Module):
+class GCNlayer(nn.Module):
 
     r"""The basic module for applying a graph convolution.
 
@@ -194,10 +43,6 @@ class ConvTemporalGraphical(nn.Module):
                  in_channels,
                  out_channels,
                  kernel_size,
-                 t_kernel_size=1,
-                 t_stride=1,
-                 t_padding=0,
-                 t_dilation=1,
                  bias=True):
         super().__init__()
 
@@ -205,245 +50,383 @@ class ConvTemporalGraphical(nn.Module):
         self.conv = nn.Conv2d(
             in_channels,
             out_channels * kernel_size,
-            kernel_size=(t_kernel_size, 1),
-            padding=(t_padding, 0),
-            stride=(t_stride, 1),
-            dilation=(t_dilation, 1),
+            kernel_size=(1, 1),
+            padding=(0, 0),
+            stride=(1, 1),
+            dilation=(1, 1),
             bias=bias)
+        self.bn = nn.Sequential(
+            nn.BatchNorm2d(out_channels),
+            # nn.LayerNorm(out_channels),
+            nn.Dropout(0.1, inplace=True),
+        )
+
 
     def forward(self, x, A):
         assert A.size(0) == self.kernel_size
-        # N C T V
+        # N T V C -> N C T V
+        x = x.permute(0, 3, 1, 2).contiguous()
         x = self.conv(x)  # N, C, T, V
 
         n, kc, t, v = x.size()
         x = x.view(n, self.kernel_size, kc//self.kernel_size, t, v)  # b, 1, c, t, v #
         x = torch.einsum('nkctv,kvw->nctw', (x, A))  # b, 1, c, t, v    1, v, v    ctv * vw = ctw
 
-        return x.contiguous(), A
+        # x = x.contiguous().permute(0, 2, 3, 1).contiguous()
+        # x = self.bn(x)
+        x = self.bn(x.contiguous()).permute(0, 2, 3, 1).contiguous()
 
-class st_gcn(nn.Module):
-    r"""Applies a spatial temporal graph convolution over an input graph sequence.
+        return x, A
 
-    Args:
-        in_channels (int): Number of channels in the input sequence data
-        out_channels (int): Number of channels produced by the convolution
-        kernel_size (tuple): Size of the temporal convolving kernel and graph convolving kernel
-        stride (int, optional): Stride of the temporal convolution. Default: 1
-        dropout (int, optional): Dropout rate of the final output. Default: 0
-        residual (bool, optional): If ``True``, applies a residual mechanism. Default: ``True``
+# classes
+class FeedForward(nn.Module):
+    def __init__(self, dim, hidden_dim, dropout=0.):
+        super().__init__()
+        self.norm = nn.BatchNorm1d(dim)
+        self.net = nn.Sequential(
+            nn.Linear(dim, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+        )
+        self.net2 = nn.Sequential(
+            nn.Linear(hidden_dim, dim),
+            nn.Dropout(dropout)
+        )
 
-    Shape:
-        - Input[0]: Input graph sequence in :math:`(N, in_channels, T_{in}, V)` format
-        - Input[1]: Input graph adjacency matrix in :math:`(K, V, V)` format
-        - Output[0]: Outpu graph sequence in :math:`(N, out_channels, T_{out}, V)` format
-        - Output[1]: Graph adjacency matrix for output data in :math:`(K, V, V)` format
+    def forward(self, x):
+        n, a, b, c = x.shape
+        x = x.reshape(-1, b, c)
 
-        where
-            :math:`N` is a batch size,
-            :math:`K` is the spatial kernel size, as :math:`K == kernel_size[1]`,
-            :math:`T_{in}/T_{out}` is a length of input/output sequence,
-            :math:`V` is the number of graph nodes.
+        x = x.permute(0, 2, 1).contiguous()
+        x = self.norm(x)
+        x = x.permute(0, 2, 1).contiguous()
 
-    """
+        x = self.net(x)
 
-    def __init__(self,
-                 in_channels,
-                 out_channels,
-                 kernel_size,
-                 stride=1,
-                 dilation=1,
-                 dropout=0,
-                 residual=True,
-                 ifgcn=True):
+        x = self.net2(x)
+        return x.reshape(n, a, b, c)
+
+        # return self.net(x).reshape(n, a, b, c)
+
+
+class GraphAttention(nn.Module):
+    def __init__(self, depth, dim, heads=8, dim_head=64, dropout=0., local=False):
+        super().__init__()
+        self.local = local
+        self.depth = depth
+
+        if local:
+            self.mask = np.zeros((10, 10))
+            if depth == 0:
+                # self.mask = np.zeros((10, 10))
+                self_link = [(i, i) for i in range(10)]
+                self.connection = [[0, 1], [0, 2], [2, 1], [3, 4], [3, 5], [4, 5], [6, 7], [6, 8], [6, 9], [8, 7], [9, 7], [8, 9]]
+            elif depth == 1:
+                self.connection = [[0, 3], [3, 8], [0, 8]]
+                self_link = [[0, 0], [3, 3], [8, 8]]
+            for i in self.connection:
+                self.mask[i[0]][i[1]] = 1.0
+                self.mask[i[1]][i[0]] = 1.0
+            for i in self_link:
+                self.mask[i[0]][i[1]] = 1.0
+            self.mask = torch.tensor(self.mask, dtype=torch.float32, requires_grad=True)
+
+        inner_dim = dim_head * heads
+        project_out = not (heads == 1 and dim_head == dim)
+
+        self.heads = heads
+        self.scale = dim_head ** -0.5
+
+        self.norm = nn.BatchNorm1d(dim)
+        # self.norm = nn.LayerNorm(dim)
+        self.attend = nn.Softmax(dim=-1)
+        self.dropout = nn.Dropout(dropout)
+
+        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias=False)
+
+
+        self.to_out = nn.Sequential(
+            nn.Linear(inner_dim, dim),
+            nn.Dropout(dropout)
+        ) if project_out else nn.Identity()
+
+    def forward(self, x):
+        n, t, vn, c = x.shape
+        if self.local and self.depth == 1:
+            residual = x
+        x = x.reshape(-1, vn, c)
+
+        x = x.permute(0, 2, 1).contiguous()
+        x = self.norm(x)
+        x = x.permute(0, 2, 1).contiguous()
+
+        qkv = self.to_qkv(x).chunk(3, dim=-1)
+        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=self.heads), qkv)
+
+        dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
+
+        if self.local:
+            dots = dots * self.mask.to(x.device)
+
+
+        attn = self.attend(dots)
+        attn = self.dropout(attn)
+
+        out = torch.matmul(attn, v)
+        out = rearrange(out, 'b h n d -> b n (h d)')
+        if self.local and self.depth == 1:
+            out = self.to_out(out).reshape(n, t, vn, c)
+            residual[:, :, 0:3] = residual[:, :, 0:3] + out[:, :, 0:1]
+            residual[:, :, 3:6] = residual[:, :, 3:6] + out[:, :, 3:4]
+            residual[:, :, 6:10] = residual[:, :, 6:10] + out[:, :, 8:9]
+            return residual
+        else:
+            out = self.to_out(out).reshape(n, t, vn, c)
+            return out
+
+
+class TemporalAttention(nn.Module):
+    def __init__(self, dim, heads=8, dim_head=64, dropout=0.):
+        super().__init__()
+        inner_dim = dim_head * heads
+        project_out = not (heads == 1 and dim_head == dim)
+
+        self.heads = heads
+        self.scale = dim_head ** -0.5
+
+        self.norm = nn.BatchNorm1d(dim)
+        # self.norm = nn.LayerNorm(dim)
+        self.attend = nn.Softmax(dim=-1)
+        self.dropout = nn.Dropout(dropout)
+
+        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias=False)
+
+        self.to_out = nn.Sequential(
+            nn.Linear(inner_dim, dim),
+            nn.Dropout(dropout)
+        ) if project_out else nn.Identity()
+
+    def forward(self, x):
+        n, vn, t, c = x.shape
+        x = x.reshape(-1, t, c)
+
+        x = x.permute(0, 2, 1).contiguous()
+        x = self.norm(x)
+        x = x.permute(0, 2, 1).contiguous()
+
+        qkv = self.to_qkv(x).chunk(3, dim=-1)
+        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=self.heads), qkv)
+
+        dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
+
+        attn = self.attend(dots)
+        attn = self.dropout(attn)
+
+        out = torch.matmul(attn, v)
+        out = rearrange(out, 'b h n d -> b n (h d)')
+        return self.to_out(out).reshape(n, vn, t, c)
+
+
+class GraphDownsample(nn.Module):
+    def __init__(self, depth, dim):
         super().__init__()
 
-        assert len(kernel_size) == 2
-        assert kernel_size[0] % 2 == 1
-        # padding = ((kernel_size[0] - 1) // 2 * dilation, 0)
-        padding = (0, 0)
-        self.ifgcn = ifgcn
-
-        if ifgcn:
-            self.gcn = ConvTemporalGraphical(in_channels, out_channels, kernel_size[1], t_kernel_size=kernel_size[0], t_stride=stride, t_dilation=dilation, t_padding=padding[0], bias=True)
-            self.tcn = nn.Sequential(
-                nn.BatchNorm2d(out_channels),
-                nn.Dropout(dropout, inplace=True),
-            )
-
+        self.depth = depth
+        if depth == 0:
+            self.pool = [[0, 3], [3, 6], [6, 10]]
+        elif depth == 1:
+            self.pool = [[0, 3]]  # [0, 5]
         else:
-            self.tcn = nn.Sequential(
-                nn.Conv2d(
-                    out_channels,
-                    out_channels,
-                    (kernel_size[0], 1),
-                    (stride, 1),
-                    dilation=(dilation, 1),
-                    padding=padding
-                ),
-                nn.BatchNorm2d(out_channels),
-                nn.Dropout(dropout, inplace=True),
-            )
+            self.pool = []
 
-        if not residual:
-            self.residual = lambda x: 0
-        elif (in_channels == out_channels) and (stride == 1):
-            self.residual = lambda x: x
-        else:
-            self.residual = nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=(stride, 1)),
-                nn.BatchNorm2d(out_channels),
-            )
-
-        self.relu = nn.ReLU(inplace=True)
+        self.norm = nn.BatchNorm2d(dim)
+        # self.norm = nn.LayerNorm(dim)
 
     def maxpool2d(self, x, pool):
         if len(pool) == 0:
             return x
-        p = pool[0]
 
-        x0 = torch.max(x[:, :, :, p[0]:p[1]], dim=-1, keepdim=True)[0]
+        x = x.permute(0, 3, 1, 2).contiguous()
+        x = self.norm(x)
+        x = x.permute(0, 2, 3, 1).contiguous()
+
+        p = pool[0]
+        x0 = torch.max(x[:, p[0]:p[1], :, :], dim=1, keepdim=True)[0]
         for i in range(1, len(pool)):
             p = pool[i]
-            x01 = torch.max(x[:, :, :, p[0]:p[1]], dim=-1, keepdim=True)[0]
-            x0 = torch.cat([x0, x01], dim=-1)
-
+            x01 = torch.max(x[:, p[0]:p[1], :, :], dim=1, keepdim=True)[0]
+            x0 = torch.cat([x0, x01], dim=1)
         return x0
-
-    def avgpool2d(self, x, pool):
-        if len(pool) == 0:
-            return x
-        p = pool[0]
-
-        x0 = torch.mean(x[:, :, :, p[0]:p[1]], dim=-1, keepdim=True)
-        for i in range(1, len(pool)):
-            p = pool[i]
-            x01 = torch.mean(x[:, :, :, p[0]:p[1]], dim=-1, keepdim=True)
-            x0 = torch.cat([x0, x01], dim=-1)
-
-        return x0
-
-    def forward(self, x, A, pool):
-        res = self.residual(x)
-        if self.ifgcn:
-            x, A = self.gcn(x, A)
-        x = self.tcn(x) + res
-        if len(pool) > 0:
-            x = self.maxpool2d(x, pool)
-
-        return self.relu(x), A
-
-
-class Model(nn.Module):
-    r"""Spatial temporal graph convolutional networks.
-
-    Args:
-        in_channels (int): Number of channels in the input data
-        num_class (int): Number of classes for the classification task
-        graph_args (dict): The arguments for building the graph
-        edge_importance_weighting (bool): If ``True``, adds a learnable
-            importance weighting to the edges of the graph
-        **kwargs (optional): Other parameters for graph convolution units
-
-    Shape:
-        - Input: :math:`(N, in_channels, T_{in}, V_{in}, M_{in})`
-        - Output: :math:`(N, num_class)` where
-            :math:`N` is a batch size,
-            :math:`T_{in}` is a length of input sequence,
-            :math:`V_{in}` is the number of graph nodes,
-            :math:`M_{in}` is the number of instance in a frame.
-    """
-
-    def __init__(self, in_channels, num_class, edge_importance_weighting):
-        super().__init__()
-
-        # load graph
-        self.graph1 = Graph(layout='face1')
-        self.graph2 = Graph(layout='face2')
-        self.graph3 = Graph(layout='face3')
-
-        A1 = torch.tensor(self.graph1.A, dtype=torch.float32, requires_grad=False)
-        self.register_buffer('A1', A1)
-        A2 = torch.tensor(self.graph2.A, dtype=torch.float32, requires_grad=False)
-        self.register_buffer('A2', A2)
-        A3 = torch.tensor(self.graph3.A, dtype=torch.float32, requires_grad=False)
-        self.register_buffer('A3', A3)
-
-        self.A = [A1, A2, A3, A3, A3, A3]
-
-        pool1 = [[0, 3], [3, 6], [6, 10]]
-        pool2 = [[0, 3]]
-        pool3 = []
-
-        self.pool = [pool1, pool2, pool3, pool3]
-
-        kernel_size1 = (3, A1.size(0)) # 3
-        kernel_size2 = (5, A1.size(0)) # 5
-        kernel_size3 = (5, A1.size(0)) # 5
-        kernel_size4 = (7, A1.size(0)) # 7
-
-        self.data_bn = nn.BatchNorm1d(in_channels * A1.size(1))
-        # kwargs0 = {k: v for k, v in kwargs.items() if k != 'dropout'}
-        hidden_dim = 64
-        self.st_gcn_networks = nn.ModuleList((
-            st_gcn(in_channels, hidden_dim, kernel_size1, 1, residual=False, ifgcn=True),
-            st_gcn(hidden_dim, hidden_dim, kernel_size2, 1, dilation=1, residual=False, ifgcn=True),
-            st_gcn(hidden_dim, hidden_dim, kernel_size3, 1, dilation=1, residual=False, ifgcn=False),
-            st_gcn(hidden_dim, hidden_dim, kernel_size4, 1, dilation=1, residual=False, ifgcn=False),
-        ))
-
-        # fcn for prediction
-        self.fcn = nn.Conv2d(hidden_dim, num_class, kernel_size=(1, 1), padding=(0, 0), dilation=(1, 1))
-
-        self._init_weight()
 
     def forward(self, x):
-        # N, C, T, V = x.size()
-
-        for gcn, A, pool in zip(self.st_gcn_networks, self.A, self.pool):
-            A = A.to(x.device)
-            x, _ = gcn(x, A, pool)
-
-        x4contrastive = x
-
-        # prediction
-        x = self.fcn(x)
-        x = x.view(x.size(0), -1, 1)
-
-        return x, x4contrastive.view(x.size(0), 1, -1)
-
-    def extract_feature(self, x):
-
-        # data normalization
-        N, C, T, V, M = x.size()
-        x = x.permute(0, 4, 3, 1, 2).contiguous()
-        x = x.view(N * M, V * C, T)
-        x = self.data_bn(x)
-        x = x.view(N, M, V, C, T)
-        x = x.permute(0, 1, 3, 4, 2).contiguous()
-        x = x.view(N * M, C, T, V)
-
-        # forwad
-        for gcn, importance in zip(self.st_gcn_networks, self.edge_importance):
-            x, _ = gcn(x, self.A * importance)
-
-        _, c, t, v = x.size()
-        feature = x.view(N, M, c, t, v).permute(0, 2, 3, 4, 1)
-
-        # prediction
-        x = self.fcn(x)
-        output = x.view(N, M, -1, t, v).permute(0, 2, 3, 4, 1)
-
-        return output, feature
-
-    def _init_weight(self):
-        for m in self.modules():
-            if isinstance(m, torch.nn.Conv1d):
-                torch.nn.init.kaiming_normal_(m.weight)
-            if isinstance(m, torch.nn.Conv2d):
-                torch.nn.init.kaiming_normal_(m.weight)
+        if len(self.pool) > 0:
+            x = self.maxpool2d(x, self.pool)
+        return x
 
 
+class TemporalDownsample(nn.Module):
+    def __init__(self, depth, dim, padding, with_norm=True, dropout=0.):
+        super().__init__()
+        self.depth = depth
 
-if __name__ == "__main__":
-    pass
+        if with_norm:
+            self.norm = nn.BatchNorm1d(dim)
+        else:
+            self.norm = nn.Identity()
+        self.downCNN = nn.Conv1d(dim, dim, kernel_size=3, stride=2, padding=padding, bias=not with_norm)
+    def forward(self, x):
+        n, v, t, c = x.shape
+        x = x.reshape(-1, t, c)  # .permute([0, 2, 1]).contiguous()  # -1, c, t
+
+        x = x.permute(0, 2, 1).contiguous()
+        x = self.norm(x)
+        x = x.permute(0, 2, 1).contiguous()
+
+        x = x.permute([0, 2, 1]).contiguous()
+        x = self.downCNN(x)
+
+        _, c, t = x.shape
+        return x.permute([0, 2, 1]).contiguous().reshape(n, v, t, c)
+
+
+def graph_downsample(x):
+    pool = [[0, 3], [3, 6], [6, 10]]
+
+    p = pool[0]
+    x0 = torch.max(x[:, p[0]:p[1], :], dim=1, keepdim=True)[0]
+    for i in range(1, len(pool)):
+        p = pool[i]
+        x01 = torch.max(x[:, p[0]:p[1], :], dim=1, keepdim=True)[0]
+        x0 = torch.cat([x0, x01], dim=1)
+    return x0
+
+
+class Transformer(nn.Module):
+    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout=0.):
+        super().__init__()
+        self.layers = nn.ModuleList([])
+        self.temporal_downsample_layers = nn.ModuleList([])
+
+        # list every layer
+        self.gattn1 = GraphAttention(0, dim, heads=heads, dim_head=dim_head, dropout=dropout)
+        self.gff1 = FeedForward(dim, mlp_dim, dropout=dropout)
+        self.gattn2 = GraphAttention(1, dim, heads=heads, dim_head=dim_head, dropout=dropout)
+        self.gff2 = FeedForward(dim, mlp_dim, dropout=dropout)
+
+        self.gdown1 = GraphDownsample(0, dim)
+        self.gdown2 = GraphDownsample(1, dim)
+
+        self.padding = [0, 0, 1, 1] # [1, 1, 1, 0]   01111
+        for i in range(len(self.padding)):
+            self.layers.append(nn.ModuleList([
+                TemporalAttention(dim, heads=heads, dim_head=dim_head, dropout=dropout),
+                FeedForward(dim, mlp_dim, dropout=dropout)
+            ]))
+            self.temporal_downsample_layers.append(nn.ModuleList([
+                TemporalDownsample(i, dim, self.padding[i])
+            ]))
+
+    def forward(self, x):
+        # n, t1, v1, c = x.shape
+        x1 = x
+        x1 = self.gattn1(x1) + x1
+        x1 = self.gff1(x1) + x1
+
+        x1 = x1.permute(0, 2, 1, 3).contiguous()  # .reshape(-1, t, c)  scale1   n v t c
+
+        for layer in self.layers[0]:
+            x1 = layer(x1) + x1
+
+        x2 = self.gdown1(x1)
+        for layer in self.temporal_downsample_layers[0]:
+            x2 = layer(x2)
+
+        # n, v2, t1, c = x2.shape
+        x2 = x2.permute(0, 2, 1, 3).contiguous()
+        x2 = self.gattn2(x2) + x2
+        x2 = self.gff2(x2) + x2  # scale1
+        x2 = x2.permute(0, 2, 1, 3).contiguous()  # .reshape(-1, t, c)  # scale2  n v t c
+
+        for layer in self.layers[1]:
+            x2 = layer(x2) + x2
+        x3 = self.gdown2(x2)  # scale3
+        for layer in self.temporal_downsample_layers[1]:
+            x3 = layer(x3)
+
+        for layer in self.layers[2]:
+            x3 = layer(x3) + x3
+        for layer in self.temporal_downsample_layers[2]:
+            x3 = layer(x3)
+
+        for layer in self.layers[3]:
+            x3 = layer(x3) + x3
+        for layer in self.temporal_downsample_layers[3]:
+            x3 = layer(x3)
+
+        # for layer in self.layers[4]:
+        #     x3 = layer(x3) + x3
+        # for layer in self.temporal_downsample_layers[4]:
+        #     x3 = layer(x3)
+
+        return x3
+
+
+class MSSTGT(nn.Module):
+    def __init__(self, *, seq_len, num_classes, dim, depth, heads, mlp_dim, channels=3, dim_head=64, dropout=0., emb_dropout=0.):
+        super().__init__()
+        # assert (seq_len % patch_size) == 0
+
+        self.to_patch_embedding = nn.Linear(2, dim)
+
+        self.norm = nn.BatchNorm1d(dim)
+
+        # pos embedding with parameters
+        self.temporal_pos_embedding = nn.Parameter(torch.randn(1, seq_len + 1, dim))
+
+        self.spatial_pos_embedding = nn.Parameter(torch.randn(3, dim))  # 2. different when symmetric or asymmetric
+
+
+        self.dropout = nn.Dropout(emb_dropout)
+
+        self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
+
+        self.mlp_head = nn.Linear(dim, num_classes)
+
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            trunc_normal_(m.weight, std=0.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, (nn.LayerNorm, nn.BatchNorm2d, nn.BatchNorm1d)):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+
+    def forward(self, x):
+        N, C, T, V = x.size()
+        x = x.permute([0, 3, 2, 1]).contiguous().reshape(N, V*T, C)
+        x = self.to_patch_embedding(x)  # 每个图节点需要patch embedding
+        _, _, C = x.size()
+
+        x = x.permute(0, 2, 1).contiguous()
+        x = self.norm(x)
+        x = x.permute(0, 2, 1).contiguous()
+
+        x = x.reshape(N, V, T, C).reshape(N*V, T, C)
+        self.temporal_pos_embedding = self.temporal_pos_embedding.to(x.device)
+        x += self.temporal_pos_embedding[:, :T]  # temporal position embedding
+
+        self.spatial_pos_embedding = self.spatial_pos_embedding.to(x.device)
+        x = x.reshape(N, V, T, C).permute(0, 2, 1, 3).contiguous().reshape(N*T, V, C)
+        # x += self.spatial_pos_embedding
+        x[:, 0:3] += self.spatial_pos_embedding[0]
+        x[:, 3:6] += self.spatial_pos_embedding[1]
+        x[:, 6:10] += self.spatial_pos_embedding[2]
+
+        x = self.dropout(x)
+        x = x.reshape(N, T, V, C)
+        # x = x.reshape(N, V, T, C).permute(0, 2, 1, 3).contiguous()
+
+        x = self.transformer(x)[:, 0]  # 去掉一维 b, 1, 1, c -> b, 1, c
+
+        return self.mlp_head(x).permute([0, 2, 1]).contiguous(), x, self.spatial_pos_embedding
