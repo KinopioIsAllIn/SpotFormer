@@ -82,19 +82,14 @@ def abfcm_iou_mul_process(subject_list, opt):
 
 
 if __name__ == "__main__":
-    import random
-
-    # 生成一个范围在 [start, end] 之间的随机整数
-    # random_integer = random.randint(1, 300)
-    # print("random_seed: " + str(random_integer))
-    # set_seed(1248)  # 270
+    set_seed(270)
 
     import os
     os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
     parser = ArgumentParser()
     parser.add_argument("--mode", type=str, default='train_test', help='process, "train" or "test".')
-    parser.add_argument('--dataset', type=str, default='cas(me)^3', help='dataset, "cas(me)^2", "samm", or "cas(me)^3".')
+    parser.add_argument('--dataset', type=str, default='cas(me)^2', help='dataset, "cas(me)^2", "samm", or "cas(me)^3".')
     parser.add_argument('--cuda', type=int, default=3)
     args = parser.parse_args()
 
