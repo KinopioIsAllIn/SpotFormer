@@ -1,9 +1,7 @@
 # SpotFormer: Multi-Scale Spatio-Temporal Transformer for Facial Expression Spotting
 
 ## Introduction
-Official Pytorch Implementation of 'SpotFormer: Multi-Scale Spatio-Temporal Transformer for Facial Expression Spotting' [preprint](https://arxiv.org/abs/2407.20799)
-
-We have released the entire code even if the paper has not been accepted yet.
+Official Pytorch Implementation of 'SpotFormer: Multi-Scale Spatio-Temporal Transformer for Facial Expression Spotting' [TAFFC] [preprint](https://arxiv.org/abs/2407.20799)
 
 This is an extension version of the conference paper SpoT-GCN. (FG 2024, Oral.) [IEEE version](https://ieeexplore.ieee.org/abstract/document/10581968), [preprint](https://arxiv.org/abs/2403.15994).
 
