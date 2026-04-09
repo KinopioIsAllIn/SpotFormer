@@ -26,8 +26,9 @@ If you find our research useful, please consider citing:
 @article{deng2024spotformer,
   title={SpotFormer: Multi-Scale Spatio-Temporal Transformer for Facial Expression Spotting},
   author={Deng, Yicheng and Hayashi, Hideaki and Nagahara, Hajime},
-  journal={arXiv preprint arXiv:2407.20799},
-  year={2024}
+  journal={IEEE Transactions on Affective Computing},
+  year={2026},
+  doi={10.1109/TAFFC.2026.3677401}
 }
 ```
 
