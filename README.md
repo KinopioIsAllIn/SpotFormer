@@ -5,7 +5,7 @@ Official Pytorch Implementation of 'SpotFormer: Multi-Scale Spatio-Temporal Tran
 
 This is an extension version of the conference paper SpoT-GCN. (FG 2024, Oral.) [IEEE version](https://ieeexplore.ieee.org/abstract/document/10581968), [preprint](https://arxiv.org/abs/2403.15994).
 
-The optical flow feature of the SAMM dataset can be downloaded from [baidunetdisk](https://pan.baidu.com/s/1GbAgqFqI8ReXd23cV4Tvpw?pwd=24ys) [google drive](https://drive.google.com/file/d/1a4FgEj_7fATJ41But6L1Yhe2XE-vfN9v/view?usp=sharing).
+The optical flow feature of the SAMM dataset can be downloaded from [baidunetdisk](https://pan.baidu.com/s/1voTSsnP4NahCrE9Hga0gKg?pwd=63y1) [google drive](https://drive.google.com/file/d/1a4FgEj_7fATJ41But6L1Yhe2XE-vfN9v/view?usp=sharing).
 
 CAS(ME)^2: [baidunetdisk](https://pan.baidu.com/s/109VV1gtsdTv3EzYxBoqAaw?pwd=r76x) [google drive](https://drive.google.com/file/d/1fXkzw3jJFC5EEx7at4ThDKQFxVSadN-U/view?usp=sharing)
 
